@@ -370,6 +370,7 @@ export default function Home() {
   const [selectedDestination, setSelectedDestination] = useState(null) // { lat, lng, name, address }
   const [currentLocation, setCurrentLocation] = useState(null)
   const [locationName, setLocationName] = useState('')
+  const [locationFullAddress, setLocationFullAddress] = useState('')
   const [locationError, setLocationError] = useState(null)
   const [isLocating, setIsLocating] = useState(false)
   const [trafficData, setTrafficData] = useState(null)
@@ -379,22 +380,20 @@ export default function Home() {
   const [notifThreshold, setNotifThreshold] = useState('light')
   const [pollingInterval, setPollingInterval] = useState(null)
 
-  // ── Reverse geocode using TomTom ──────────────────────────────────────────
+  // ── Reverse geocode via server-side API (key never exposed to browser) ─────
   const reverseGeocode = useCallback(async (lat, lng) => {
     try {
-      const apiKey = 'CHNuPfXYXFb27rzq86QBq0xHX4WHqA3W'
-      const res = await fetch(
-        `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lng}.json?key=${apiKey}&radius=100`
-      )
+      const res = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`)
       const data = await res.json()
-      const addr = data?.addresses?.[0]?.address
-      if (addr) {
-        setLocationName(
-          addr.municipality || addr.localName || addr.freeformAddress?.split(',')[0] || `${lat.toFixed(3)}, ${lng.toFixed(3)}`
-        )
+      if (data.displayName) {
+        setLocationName(data.displayName)
+        setLocationFullAddress(data.freeformAddress || data.displayName)
+      } else {
+        setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)}`)
+        setLocationFullAddress('')
       }
     } catch {
-      setLocationName(`${lat.toFixed(3)}, ${lng.toFixed(3)}`)
+      setLocationName(`${lat.toFixed(4)}, ${lng.toFixed(4)}`)
     }
   }, [])
 
@@ -568,12 +567,17 @@ export default function Home() {
                   currentLocation ? 'border-green-500/30 bg-green-500/10' : 'border-white/10 bg-gray-800/60'
                 } transition-all`}>
                   <Navigation className={`w-4 h-4 flex-shrink-0 ${currentLocation ? 'text-green-400' : 'text-gray-500'}`} />
-                  <span className={`text-sm ${currentLocation ? 'text-green-300' : 'text-gray-500'}`}>
-                    {isLocating ? 'Detecting location…'
-                      : locationError ? locationError
-                      : currentLocation ? (locationName || `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`)
-                      : 'Location not detected'}
-                  </span>
+                  <div className="min-w-0">
+                    <div className={`text-sm font-medium truncate ${currentLocation ? 'text-green-300' : 'text-gray-500'}`}>
+                      {isLocating ? 'Detecting location…'
+                        : locationError ? locationError
+                        : currentLocation ? (locationName || `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`)
+                        : 'Location not detected'}
+                    </div>
+                    {currentLocation && locationFullAddress && locationFullAddress !== locationName && (
+                      <div className="text-xs text-gray-500 truncate mt-0.5">{locationFullAddress}</div>
+                    )}
+                  </div>
                 </div>
                 <button
                   id="refresh-location-btn"
