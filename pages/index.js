@@ -77,7 +77,7 @@ function PlacesAutocomplete({ currentLocation, onSelect, value, onChange }) {
   const handleClear = () => { onChange(''); onSelect(null); setSuggestions([]); setShowDropdown(false) }
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative z-50">
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none z-10" />
         <input
@@ -436,7 +436,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
 
           {/* ── INPUT CARD ────────────────────────────────────────────────── */}
-          <div className="card-glow p-6 space-y-5">
+          <div className="card-glow p-6 space-y-5 relative z-50">
             <div className="flex items-center gap-3 mb-1">
               <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
                 <MapPin className="w-4 h-4 text-cyan-400" />
