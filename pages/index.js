@@ -205,18 +205,21 @@ function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDurati
 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 
-function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, notifThreshold, setNotifThreshold }) {
+function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, notifThreshold, setNotifThreshold, onSimulate }) {
   const [expanded, setExpanded] = useState(false)
   useEffect(() => { if (level === 'heavy') setExpanded(true) }, [level])
 
   if (isSubscribed) return (
-    <div className="glass-card p-6 flex items-center gap-4 animate-slide-up">
-      <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center flex-shrink-0"><Bell className="w-6 h-6 text-cyan-400" /></div>
-      <div className="flex-1">
-        <div className="font-semibold text-white">Notifications Active 🔔</div>
-        <div className="text-gray-400 text-sm mt-0.5">Checking every 5 min. Alert when traffic is <span className="text-cyan-400 font-medium">{notifThreshold === 'light' ? 'Light' : 'Moderate or better'}</span>.</div>
+    <div className="glass-card p-6 flex flex-col gap-4 animate-slide-up">
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center flex-shrink-0"><Bell className="w-6 h-6 text-cyan-400" /></div>
+        <div className="flex-1">
+          <div className="font-semibold text-white">Notifications Active 🔔</div>
+          <div className="text-gray-400 text-sm mt-0.5">Checking every 5 min. Alert when traffic is <span className="text-cyan-400 font-medium">{notifThreshold === 'light' ? 'Light' : 'Moderate or better'}</span>.</div>
+        </div>
+        <button onClick={onUnsubscribe} className="text-gray-500 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-500/10" title="Cancel"><X className="w-5 h-5" /></button>
       </div>
-      <button onClick={onUnsubscribe} className="text-gray-500 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-500/10" title="Cancel"><X className="w-5 h-5" /></button>
+      <button onClick={onSimulate} className="text-xs text-amber-400 hover:text-amber-300 w-full text-center py-2 border border-amber-500/20 rounded-lg bg-amber-500/10 transition-colors mt-2">🧪 Simulate Traffic Drop (Test Notification)</button>
     </div>
   )
 
@@ -281,7 +284,7 @@ export default function Home() {
   const [lastChecked, setLastChecked] = useState(null)
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [notifThreshold, setNotifThreshold] = useState('light')
-  const [pollingInterval, setPollingInterval] = useState(null)
+  const pollingIntervalRef = useRef(null)
 
   // ── Reverse geocode (server-side proxy, key never exposed) ────────────────
   const reverseGeocode = useCallback(async (lat, lng) => {
@@ -369,6 +372,8 @@ export default function Home() {
         if (thresholdMet) {
           new Notification('🚦 iManage Traffic Advisor', { body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`, icon: '/favicon.ico' })
           toast.success('Traffic improved — notification sent!')
+          setIsSubscribed(false)
+          if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
         }
       }
     } catch (err) {
@@ -387,13 +392,13 @@ export default function Home() {
     setIsSubscribed(true)
     toast.success("Notifications enabled! We'll check every 5 minutes.")
     const interval = setInterval(() => checkTraffic(true), 5 * 60 * 1000)
-    setPollingInterval(interval)
+    pollingIntervalRef.current = interval
     checkTraffic(true)
   }
 
   const handleUnsubscribe = () => {
     setIsSubscribed(false)
-    if (pollingInterval) { clearInterval(pollingInterval); setPollingInterval(null) }
+    if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
     toast('Notifications disabled.', { icon: '🔕' })
   }
 
@@ -401,12 +406,29 @@ export default function Home() {
   useEffect(() => {
     if (isSubscribed) {
       setIsSubscribed(false)
-      if (pollingInterval) { clearInterval(pollingInterval); setPollingInterval(null) }
+      if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLocation, selectedDestination])
 
-  useEffect(() => () => { if (pollingInterval) clearInterval(pollingInterval) }, [pollingInterval])
+  useEffect(() => () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current) }, [])
+
+  const handleSimulateDrop = () => {
+    if (!trafficData) return
+    const mockData = {
+      ...trafficData,
+      durationInTrafficSeconds: trafficData.durationSeconds,
+      trafficDelaySeconds: 0
+    }
+    setTrafficData(mockData)
+    new Notification('🧪 TEST ALERT: Traffic is Light!', { 
+      body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`, 
+      icon: '/favicon.ico' 
+    })
+    toast.success('Simulation triggered!')
+    setIsSubscribed(false)
+    if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
+  }
 
   const trafficLevel = trafficData ? getTrafficLevel(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : null
   const delayMin = trafficData ? getDelayMinutes(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : 0
@@ -637,7 +659,7 @@ export default function Home() {
                 <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />Refresh Traffic Data
               </button>
               { (trafficLevel === 'heavy' || isSubscribed) && (
-                <NotificationPanel level={trafficLevel} onSubscribe={handleSubscribe} isSubscribed={isSubscribed} onUnsubscribe={handleUnsubscribe} notifThreshold={notifThreshold} setNotifThreshold={setNotifThreshold} />
+                <NotificationPanel level={trafficLevel} onSubscribe={handleSubscribe} isSubscribed={isSubscribed} onUnsubscribe={handleUnsubscribe} notifThreshold={notifThreshold} setNotifThreshold={setNotifThreshold} onSimulate={handleSimulateDrop} />
               )}
             </div>
           )}
