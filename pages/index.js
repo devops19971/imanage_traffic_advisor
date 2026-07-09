@@ -394,8 +394,7 @@ export default function Home() {
         if (thresholdMet) {
           playNotificationSound()
           new Notification('🚦 iManage Traffic Advisor', { 
-            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`, 
-            icon: '/favicon.ico',
+            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`,
             requireInteraction: true
           })
           toast.success('Traffic improved — notification sent!')
@@ -450,8 +449,7 @@ export default function Home() {
     setTrafficData(mockData)
     playNotificationSound()
     new Notification('🧪 TEST ALERT: Traffic is Light!', { 
-      body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`, 
-      icon: '/favicon.ico',
+      body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`,
       requireInteraction: true
     })
     toast.success('Simulation triggered!')
