@@ -1,17 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Script from 'next/script'
 import SeoHead from '../components/SeoHead'
 import toast from 'react-hot-toast'
 import {
-  MapPin, Navigation, Clock, Bell, BellOff, ChevronRight,
+  MapPin, Navigation, Clock, Bell, ChevronRight,
   Zap, RefreshCw, AlertTriangle, CheckCircle, Timer,
-  TrendingDown, TrendingUp, Minus, Car, Info, X
+  TrendingDown, TrendingUp, Minus, Car, X, Search
 } from 'lucide-react'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDuration(seconds) {
-  if (!seconds) return '—'
+  if (!seconds && seconds !== 0) return '—'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   if (h > 0) return `${h}h ${m}m`
@@ -37,35 +36,161 @@ function getDelayMinutes(baseSec, trafficSec) {
   return Math.max(0, Math.round((trafficSec - baseSec) / 60))
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Autocomplete Component ───────────────────────────────────────────────────
+
+function PlacesAutocomplete({ currentLocation, onSelect, value, onChange }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const debounceRef = useRef(null)
+  const wrapperRef = useRef(null)
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const handleInput = (e) => {
+    const val = e.target.value
+    onChange(val)
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (val.trim().length < 2) {
+      setSuggestions([])
+      setShowDropdown(false)
+      return
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const params = new URLSearchParams({ q: val.trim() })
+        if (currentLocation) {
+          params.append('lat', currentLocation.lat)
+          params.append('lng', currentLocation.lng)
+        }
+        const res = await fetch(`/api/search-places?${params}`)
+        const data = await res.json()
+        setSuggestions(data.results || [])
+        setShowDropdown(true)
+      } catch {
+        setSuggestions([])
+      } finally {
+        setIsSearching(false)
+      }
+    }, 350)
+  }
+
+  const handleSelect = (suggestion) => {
+    onChange(suggestion.address || suggestion.name)
+    onSelect(suggestion)
+    setSuggestions([])
+    setShowDropdown(false)
+  }
+
+  const handleClear = () => {
+    onChange('')
+    onSelect(null)
+    setSuggestions([])
+    setShowDropdown(false)
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none z-10" />
+        <input
+          id="destination-input"
+          type="text"
+          value={value}
+          onChange={handleInput}
+          onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+          placeholder="Search destination — city, landmark, address…"
+          className="input-field pl-11 pr-10"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {value && (
+          <button
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {showDropdown && suggestions.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in">
+          {isSearching && (
+            <div className="px-4 py-3 text-xs text-gray-500">Searching…</div>
+          )}
+          {suggestions.map((s, i) => (
+            <button
+              key={s.id || i}
+              onClick={() => handleSelect(s)}
+              className="w-full flex items-start gap-3 px-4 py-3.5 hover:bg-white/5 transition-colors text-left border-b border-white/5 last:border-0"
+            >
+              <MapPin className="w-4 h-4 text-cyan-500 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-white truncate">{s.name}</div>
+                {s.address && s.address !== s.name && (
+                  <div className="text-xs text-gray-500 truncate mt-0.5">{s.address}</div>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {showDropdown && !isSearching && suggestions.length === 0 && value.length >= 2 && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-white/10 rounded-2xl shadow-2xl px-4 py-4 z-50 text-center text-sm text-gray-500">
+          No results found. Try a different search.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Traffic Light ────────────────────────────────────────────────────────────
 
 function TrafficLightIndicator({ level }) {
   return (
-    <div className="flex flex-col items-center gap-2">
-      {/* Traffic light housing */}
-      <div className="bg-gray-800 border border-white/10 rounded-2xl p-3 flex flex-col gap-2.5 shadow-xl">
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="bg-gray-800 border border-white/10 rounded-xl p-2.5 flex flex-col gap-2 shadow-xl">
         {['red', 'yellow', 'green'].map((color) => {
           const active =
             (color === 'red' && level === 'heavy') ||
             (color === 'yellow' && level === 'moderate') ||
             (color === 'green' && level === 'light')
-          const colorMap = {
-            red: active ? 'bg-red-500 shadow-[0_0_16px_4px_rgba(239,68,68,0.7)]' : 'bg-gray-700',
-            yellow: active ? 'bg-yellow-400 shadow-[0_0_16px_4px_rgba(245,158,11,0.7)]' : 'bg-gray-700',
-            green: active ? 'bg-green-500 shadow-[0_0_16px_4px_rgba(16,185,129,0.7)]' : 'bg-gray-700',
+          const glowMap = {
+            red: 'bg-red-500 shadow-[0_0_14px_4px_rgba(239,68,68,0.7)]',
+            yellow: 'bg-yellow-400 shadow-[0_0_14px_4px_rgba(245,158,11,0.7)]',
+            green: 'bg-green-500 shadow-[0_0_14px_4px_rgba(16,185,129,0.7)]',
           }
           return (
             <div
               key={color}
-              className={`w-8 h-8 rounded-full transition-all duration-700 ${colorMap[color]} ${active ? 'scale-110' : 'scale-90 opacity-40'}`}
+              className={`w-7 h-7 rounded-full transition-all duration-700 ${
+                active ? `${glowMap[color]} scale-110` : 'bg-gray-700 scale-90 opacity-30'
+              }`}
             />
           )
         })}
       </div>
-      <span className="text-xs text-gray-500 font-medium">Traffic</span>
+      <span className="text-[10px] text-gray-600 font-medium">Traffic</span>
     </div>
   )
 }
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({ icon, label, value, sub, color = 'cyan' }) {
   const colorMap = {
@@ -74,30 +199,24 @@ function StatCard({ icon, label, value, sub, color = 'cyan' }) {
     red: 'from-red-500/10 to-orange-500/10 border-red-500/20',
     yellow: 'from-yellow-500/10 to-amber-500/10 border-yellow-500/20',
   }
-  const iconColor = {
-    cyan: 'text-cyan-400',
-    green: 'text-green-400',
-    red: 'text-red-400',
-    yellow: 'text-yellow-400',
-  }
+  const iconColor = { cyan: 'text-cyan-400', green: 'text-green-400', red: 'text-red-400', yellow: 'text-yellow-400' }
   return (
     <div className={`bg-gradient-to-br ${colorMap[color]} border rounded-2xl p-5 flex flex-col gap-3 animate-slide-up`}>
-      <div className={`${iconColor[color]}`}>{icon}</div>
+      <div className={iconColor[color]}>{icon}</div>
       <div>
         <div className="text-2xl font-bold font-display text-white">{value}</div>
-        {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
+        {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
       </div>
       <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</div>
     </div>
   )
 }
 
+// ─── Recommendation Banner ────────────────────────────────────────────────────
+
 function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDuration }) {
   if (!level) return null
-  const isGood = level === 'light'
-  const isModerate = level === 'moderate'
-
-  if (isGood) {
+  if (level === 'light') {
     return (
       <div className="leave-now-glow rounded-2xl border border-green-500/40 bg-gradient-to-br from-green-500/15 to-emerald-600/10 p-6 flex items-center gap-5 animate-slide-up">
         <div className="w-14 h-14 rounded-2xl bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0">
@@ -106,16 +225,15 @@ function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDurati
         <div className="flex-1">
           <div className="text-green-400 font-bold text-xl font-display">✅ Leave Now!</div>
           <div className="text-gray-300 text-sm mt-1">
-            Traffic is light — only <span className="text-white font-semibold">{formatDuration(trafficDuration)}</span> travel time.
-            {delayMinutes > 0 ? ` Just ${delayMinutes} min delay.` : ' No delay!'}
+            Traffic is light — ETA <span className="text-white font-semibold">{formatDuration(trafficDuration)}</span>.
+            {delayMinutes > 0 ? ` Just ${delayMinutes} min extra.` : ' No delay at all!'}
           </div>
         </div>
         <div className="text-5xl">🚀</div>
       </div>
     )
   }
-
-  if (isModerate) {
+  if (level === 'moderate') {
     return (
       <div className="rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-500/15 to-amber-600/10 p-6 flex items-center gap-5 animate-slide-up">
         <div className="w-14 h-14 rounded-2xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
@@ -124,15 +242,13 @@ function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDurati
         <div className="flex-1">
           <div className="text-yellow-400 font-bold text-xl font-display">⏳ Moderate Traffic</div>
           <div className="text-gray-300 text-sm mt-1">
-            <span className="text-white font-semibold">{delayMinutes} min delay</span>. You can leave if needed, but waiting may help.
-            Normal time: <span className="text-white font-semibold">{formatDuration(baseDuration)}</span>.
+            <span className="text-white font-semibold">{delayMinutes} min delay</span>. You can leave if needed — waiting may improve conditions.
           </div>
         </div>
         <div className="text-5xl">🟡</div>
       </div>
     )
   }
-
   return (
     <div className="rounded-2xl border border-red-500/40 bg-gradient-to-br from-red-500/15 to-orange-600/10 p-6 flex items-center gap-5 animate-slide-up">
       <div className="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center flex-shrink-0">
@@ -141,8 +257,7 @@ function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDurati
       <div className="flex-1">
         <div className="text-red-400 font-bold text-xl font-display">🔴 Wait — Heavy Traffic</div>
         <div className="text-gray-300 text-sm mt-1">
-          <span className="text-white font-semibold">{delayMinutes} min delay</span> vs normal.
-          We suggest waiting and we'll notify you when traffic clears up.
+          <span className="text-white font-semibold">{delayMinutes} min extra delay</span> vs normal. Enable notifications — we'll alert you when it clears.
         </div>
       </div>
       <div className="text-5xl">🚗</div>
@@ -150,12 +265,11 @@ function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDurati
   )
 }
 
+// ─── Notification Panel ───────────────────────────────────────────────────────
+
 function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, notifThreshold, setNotifThreshold }) {
   const [expanded, setExpanded] = useState(false)
-
-  useEffect(() => {
-    if (level === 'heavy') setExpanded(true)
-  }, [level])
+  useEffect(() => { if (level === 'heavy') setExpanded(true) }, [level])
 
   if (isSubscribed) {
     return (
@@ -166,7 +280,10 @@ function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, no
         <div className="flex-1">
           <div className="font-semibold text-white">Notifications Active 🔔</div>
           <div className="text-gray-400 text-sm mt-0.5">
-            We'll alert you when traffic improves to <span className="text-cyan-400 font-medium">{notifThreshold === 'light' ? 'Light' : 'Moderate or better'}</span>.
+            Checking every 5 min. You'll be notified when traffic is{' '}
+            <span className="text-cyan-400 font-medium">
+              {notifThreshold === 'light' ? 'Light' : 'Moderate or better'}
+            </span>.
           </div>
         </div>
         <button
@@ -191,7 +308,7 @@ function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, no
         </div>
         <div className="flex-1">
           <div className="font-semibold text-white">Get Notified When Traffic Improves</div>
-          <div className="text-gray-400 text-sm mt-0.5">Enable browser notifications — we'll ping you at the right moment.</div>
+          <div className="text-gray-400 text-sm mt-0.5">Enable browser push notifications — we'll ping you at the right moment.</div>
         </div>
         <ChevronRight className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
       </button>
@@ -199,7 +316,7 @@ function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, no
       {expanded && (
         <div className="px-6 pb-6 border-t border-white/5 pt-5 space-y-4 animate-fade-in">
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Notify me when traffic is:</label>
+            <label className="block text-sm font-medium text-gray-400 mb-3">Notify me when traffic is:</label>
             <div className="flex gap-3">
               {[
                 { value: 'light', label: '🟢 Light', desc: 'Best condition' },
@@ -220,33 +337,27 @@ function NotificationPanel({ level, onSubscribe, isSubscribed, onUnsubscribe, no
               ))}
             </div>
           </div>
-
-          <button
-            onClick={onSubscribe}
-            className="w-full btn-primary justify-center py-3.5"
-          >
+          <button onClick={onSubscribe} className="w-full btn-primary justify-center py-3.5">
             <Bell className="w-5 h-5" />
             Enable Notifications
           </button>
-
-          <p className="text-xs text-gray-600 text-center">
-            We check traffic every 5 minutes. You can dismiss anytime.
-          </p>
+          <p className="text-xs text-gray-600 text-center">Traffic checked every 5 min. Dismiss anytime.</p>
         </div>
       )}
     </div>
   )
 }
 
+// ─── Loading Skeleton ─────────────────────────────────────────────────────────
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="h-32 rounded-2xl shimmer bg-gray-800/50" />
       <div className="grid grid-cols-2 gap-4">
-        <div className="h-28 rounded-2xl shimmer bg-gray-800/50" />
-        <div className="h-28 rounded-2xl shimmer bg-gray-800/50" />
-        <div className="h-28 rounded-2xl shimmer bg-gray-800/50" />
-        <div className="h-28 rounded-2xl shimmer bg-gray-800/50" />
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-28 rounded-2xl shimmer bg-gray-800/50" />
+        ))}
       </div>
     </div>
   )
@@ -255,10 +366,8 @@ function LoadingSkeleton() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [mapsLoaded, setMapsLoaded] = useState(false)
-  const [destination, setDestination] = useState('')
-  const [destinationPlaceId, setDestinationPlaceId] = useState(null)
-  const [destinationAddress, setDestinationAddress] = useState('')
+  const [searchValue, setSearchValue] = useState('')
+  const [selectedDestination, setSelectedDestination] = useState(null) // { lat, lng, name, address }
   const [currentLocation, setCurrentLocation] = useState(null)
   const [locationName, setLocationName] = useState('')
   const [locationError, setLocationError] = useState(null)
@@ -269,40 +378,25 @@ export default function Home() {
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [notifThreshold, setNotifThreshold] = useState('light')
   const [pollingInterval, setPollingInterval] = useState(null)
-  const [hasApiKey, setHasApiKey] = useState(true)
 
-  const autocompleteRef = useRef(null)
-  const inputRef = useRef(null)
-  const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
-
-  // ── Check API key ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!MAPS_KEY || MAPS_KEY === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-      setHasApiKey(false)
-    }
-  }, [MAPS_KEY])
-
-  // ── Init Places Autocomplete ──────────────────────────────────────────────
-  const initAutocomplete = useCallback(() => {
-    if (!window.google || !inputRef.current) return
-
-    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
-      fields: ['place_id', 'formatted_address', 'name', 'geometry'],
-    })
-    ac.addListener('place_changed', () => {
-      const place = ac.getPlace()
-      if (place?.place_id) {
-        setDestinationPlaceId(place.place_id)
-        setDestinationAddress(place.formatted_address || place.name || '')
-        setDestination(place.formatted_address || place.name || '')
+  // ── Reverse geocode using TomTom ──────────────────────────────────────────
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const apiKey = 'CHNuPfXYXFb27rzq86QBq0xHX4WHqA3W'
+      const res = await fetch(
+        `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lng}.json?key=${apiKey}&radius=100`
+      )
+      const data = await res.json()
+      const addr = data?.addresses?.[0]?.address
+      if (addr) {
+        setLocationName(
+          addr.municipality || addr.localName || addr.freeformAddress?.split(',')[0] || `${lat.toFixed(3)}, ${lng.toFixed(3)}`
+        )
       }
-    })
-    autocompleteRef.current = ac
+    } catch {
+      setLocationName(`${lat.toFixed(3)}, ${lng.toFixed(3)}`)
+    }
   }, [])
-
-  useEffect(() => {
-    if (mapsLoaded) initAutocomplete()
-  }, [mapsLoaded, initAutocomplete])
 
   // ── Get Current Location ──────────────────────────────────────────────────
   const getCurrentLocation = useCallback(() => {
@@ -313,51 +407,26 @@ export default function Home() {
     setIsLocating(true)
     setLocationError(null)
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
         setCurrentLocation(coords)
         setIsLocating(false)
-
-        // Reverse geocode to get name
-        if (window.google) {
-          try {
-            const geocoder = new window.google.maps.Geocoder()
-            geocoder.geocode({ location: coords }, (results, status) => {
-              if (status === 'OK' && results[0]) {
-                // Get a short name from the address components
-                const comps = results[0].address_components
-                const locality = comps.find(c => c.types.includes('locality') || c.types.includes('sublocality'))
-                setLocationName(locality ? locality.long_name : results[0].formatted_address.split(',')[0])
-              }
-            })
-          } catch (e) { /* silent */ }
-        }
+        reverseGeocode(coords.lat, coords.lng)
       },
-      (err) => {
+      () => {
         setIsLocating(false)
-        setLocationError('Could not get your location. Please allow location access.')
+        setLocationError('Location access denied. Please allow in browser settings.')
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )
-  }, [])
+  }, [reverseGeocode])
 
-  useEffect(() => {
-    // Auto-detect location on mount
-    if (typeof window !== 'undefined') {
-      getCurrentLocation()
-    }
-  }, [])
+  useEffect(() => { getCurrentLocation() }, [])
 
   // ── Check Traffic ─────────────────────────────────────────────────────────
   const checkTraffic = useCallback(async (silent = false) => {
-    if (!currentLocation) {
-      toast.error('Please allow location access first.')
-      return
-    }
-    if (!destinationPlaceId && !destination.trim()) {
-      toast.error('Please enter a destination.')
-      return
-    }
+    if (!currentLocation) { toast.error('Please allow location access first.'); return }
+    if (!selectedDestination) { toast.error('Please select a destination from the suggestions.'); return }
     if (!silent) setIsChecking(true)
 
     try {
@@ -366,8 +435,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           origin: currentLocation,
-          destinationPlaceId,
-          destinationAddress: destination.trim(),
+          destination: { lat: selectedDestination.lat, lng: selectedDestination.lng },
         }),
       })
       const data = await res.json()
@@ -375,19 +443,16 @@ export default function Home() {
       setTrafficData(data)
       setLastChecked(new Date())
 
-      // Check notification threshold
-      if (isSubscribed) {
+      // Trigger notification if subscribed and threshold met
+      if (isSubscribed && Notification.permission === 'granted') {
         const level = getTrafficLevel(data.durationSeconds, data.durationInTrafficSeconds)
-        const thresholdMet =
-          notifThreshold === 'light' ? level === 'light' :
-          level === 'light' || level === 'moderate'
-
-        if (thresholdMet && Notification.permission === 'granted') {
+        const thresholdMet = notifThreshold === 'light' ? level === 'light' : level !== 'heavy'
+        if (thresholdMet) {
           new Notification('🚦 iManage Traffic Advisor', {
-            body: `Traffic is now ${level}! Time to leave for ${destinationAddress}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`,
+            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`,
             icon: '/favicon.ico',
           })
-          toast.success('Traffic improved! Notification sent.')
+          toast.success('Traffic improved — notification sent!')
         }
       }
     } catch (err) {
@@ -395,59 +460,31 @@ export default function Home() {
     } finally {
       if (!silent) setIsChecking(false)
     }
-  }, [currentLocation, destinationPlaceId, destination, isSubscribed, notifThreshold, destinationAddress])
+  }, [currentLocation, selectedDestination, isSubscribed, notifThreshold])
 
-  // ── Subscribe to Notifications ────────────────────────────────────────────
+  // ── Subscribe ─────────────────────────────────────────────────────────────
   const handleSubscribe = async () => {
-    if (!destinationPlaceId && !destination.trim()) {
-      toast.error('Please enter and select a destination first.')
-      return
-    }
-    if (!currentLocation) {
-      toast.error('Please allow location access first.')
-      return
-    }
-
-    try {
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') {
-        toast.error('Notification permission denied. Please enable in browser settings.')
-        return
-      }
-      setIsSubscribed(true)
-      toast.success('Notifications enabled! We\'ll check traffic every 5 minutes.')
-
-      // Start polling
-      const interval = setInterval(() => {
-        checkTraffic(true)
-      }, 5 * 60 * 1000) // every 5 minutes
-      setPollingInterval(interval)
-
-      // Immediate check
-      checkTraffic(true)
-    } catch (err) {
-      toast.error('Could not enable notifications.')
-    }
+    if (!selectedDestination) { toast.error('Please select a destination first.'); return }
+    if (!currentLocation) { toast.error('Please allow location access first.'); return }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') { toast.error('Notification permission denied.'); return }
+    setIsSubscribed(true)
+    toast.success("Notifications enabled! We'll check every 5 minutes.")
+    const interval = setInterval(() => checkTraffic(true), 5 * 60 * 1000)
+    setPollingInterval(interval)
+    checkTraffic(true)
   }
 
   const handleUnsubscribe = () => {
     setIsSubscribed(false)
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
-      setPollingInterval(null)
-    }
+    if (pollingInterval) { clearInterval(pollingInterval); setPollingInterval(null) }
     toast('Notifications disabled.', { icon: '🔕' })
   }
 
-  // cleanup
   useEffect(() => () => { if (pollingInterval) clearInterval(pollingInterval) }, [pollingInterval])
 
-  const trafficLevel = trafficData
-    ? getTrafficLevel(trafficData.durationSeconds, trafficData.durationInTrafficSeconds)
-    : null
-  const delayMin = trafficData
-    ? getDelayMinutes(trafficData.durationSeconds, trafficData.durationInTrafficSeconds)
-    : 0
+  const trafficLevel = trafficData ? getTrafficLevel(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : null
+  const delayMin = trafficData ? getDelayMinutes(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : 0
 
   const trafficBadge = {
     light: <span className="traffic-badge-green"><span className="traffic-dot traffic-dot-green" />Light Traffic</span>,
@@ -460,29 +497,17 @@ export default function Home() {
     <>
       <SeoHead />
 
-      {/* Load Google Maps */}
-      {hasApiKey && (
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=places`}
-          strategy="afterInteractive"
-          onLoad={() => setMapsLoaded(true)}
-        />
-      )}
-
       <div className="min-h-screen bg-gray-950 text-gray-100">
 
         {/* ── HERO ──────────────────────────────────────────────────────────── */}
         <section className="relative overflow-hidden bg-gradient-to-br from-blue-900 via-indigo-900 to-gray-950 py-16 md:py-24">
-          {/* Background blobs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="blob blob-1 absolute -top-32 -left-32 w-96 h-96 bg-cyan-400" />
             <div className="blob blob-2 absolute top-1/2 -right-20 w-80 h-80 bg-blue-500" />
             <div className="blob blob-3 absolute -bottom-20 left-1/3 w-72 h-72 bg-indigo-500" />
           </div>
-
-          {/* Grid pattern overlay */}
           <div
-            className="absolute inset-0 opacity-5"
+            className="absolute inset-0 opacity-5 pointer-events-none"
             style={{
               backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
               backgroundSize: '40px 40px',
@@ -490,10 +515,9 @@ export default function Home() {
           />
 
           <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
-            {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium text-cyan-300 mb-8">
               <Car className="w-4 h-4" />
-              Powered by Google Maps
+              Powered by TomTom Real-Time Traffic
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight mb-4 font-display">
@@ -504,20 +528,18 @@ export default function Home() {
             </h1>
 
             <p className="text-lg text-blue-200 max-w-xl mx-auto leading-relaxed mb-10">
-              Enter your destination, see live traffic conditions, and know exactly <span className="text-white font-semibold">when to leave</span>. Get notified when traffic clears.
+              Enter your destination, see <span className="text-white font-semibold">live traffic conditions</span>, and know exactly when to leave. Get notified when traffic clears.
             </p>
 
-            {/* Stats row */}
             <div className="flex flex-wrap justify-center gap-6 text-sm">
               {[
-                { icon: '⚡', text: 'Real-time traffic' },
+                { icon: '⚡', text: 'Real-time TomTom traffic' },
                 { icon: '📍', text: 'Auto location detect' },
                 { icon: '🔔', text: 'Smart notifications' },
-                { icon: '🗺️', text: 'Google Maps powered' },
+                { icon: '🆓', text: 'No billing required' },
               ].map((s) => (
                 <div key={s.text} className="flex items-center gap-2 text-blue-300">
-                  <span>{s.icon}</span>
-                  <span>{s.text}</span>
+                  <span>{s.icon}</span><span>{s.text}</span>
                 </div>
               ))}
             </div>
@@ -526,20 +548,6 @@ export default function Home() {
 
         {/* ── MAIN CONTENT ──────────────────────────────────────────────────── */}
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
-
-          {/* ── API Key Warning ─────────────────────────────────────────────── */}
-          {!hasApiKey && (
-            <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-5 flex gap-4 items-start animate-slide-up">
-              <Info className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-200">
-                <div className="font-semibold mb-1">Google Maps API Key Required</div>
-                Open <code className="bg-yellow-500/20 px-1.5 py-0.5 rounded text-xs">.env.local</code> and set{' '}
-                <code className="bg-yellow-500/20 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GOOGLE_MAPS_KEY</code> and{' '}
-                <code className="bg-yellow-500/20 px-1.5 py-0.5 rounded text-xs">GOOGLE_MAPS_SERVER_KEY</code> to your Google Maps API key,
-                then restart the dev server.
-              </div>
-            </div>
-          )}
 
           {/* ── INPUT CARD ──────────────────────────────────────────────────── */}
           <div className="card-glow p-6 space-y-5">
@@ -561,73 +569,59 @@ export default function Home() {
                 } transition-all`}>
                   <Navigation className={`w-4 h-4 flex-shrink-0 ${currentLocation ? 'text-green-400' : 'text-gray-500'}`} />
                   <span className={`text-sm ${currentLocation ? 'text-green-300' : 'text-gray-500'}`}>
-                    {isLocating
-                      ? 'Detecting location…'
-                      : locationError
-                        ? locationError
-                        : currentLocation
-                          ? locationName || `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`
-                          : 'Location not detected'}
+                    {isLocating ? 'Detecting location…'
+                      : locationError ? locationError
+                      : currentLocation ? (locationName || `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`)
+                      : 'Location not detected'}
                   </span>
                 </div>
                 <button
                   id="refresh-location-btn"
                   onClick={getCurrentLocation}
                   disabled={isLocating}
-                  className="p-3.5 rounded-xl border border-white/10 bg-gray-800/60 hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-all disabled:opacity-50"
                   title="Refresh location"
+                  className="p-3.5 rounded-xl border border-white/10 bg-gray-800/60 hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-all disabled:opacity-50"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
 
-            {/* Destination */}
+            {/* Destination Autocomplete */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
                 Destination
               </label>
-              <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none z-10" />
-                <input
-                  ref={inputRef}
-                  id="destination-input"
-                  type="text"
-                  value={destination}
-                  onChange={(e) => {
-                    setDestination(e.target.value)
-                    if (!e.target.value) {
-                      setDestinationPlaceId(null)
-                      setDestinationAddress('')
-                    }
-                  }}
-                  placeholder="Enter destination address or landmark…"
-                  className="input-field pl-11"
-                  autoComplete="off"
-                />
-              </div>
+              <PlacesAutocomplete
+                currentLocation={currentLocation}
+                value={searchValue}
+                onChange={(v) => { setSearchValue(v); if (!v) { setSelectedDestination(null); setTrafficData(null) } }}
+                onSelect={(s) => setSelectedDestination(s)}
+              />
+              {selectedDestination && (
+                <div className="flex items-center gap-2 mt-2 text-xs text-green-400">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Destination confirmed — ready to check traffic
+                </div>
+              )}
             </div>
 
             {/* Check Traffic Button */}
             <button
               id="check-traffic-btn"
               onClick={() => checkTraffic(false)}
-              disabled={isChecking || !currentLocation || (!destinationPlaceId && !destination.trim())}
+              disabled={isChecking || !currentLocation || !selectedDestination}
               className="w-full btn-primary justify-center py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {isChecking ? (
-                <><RefreshCw className="w-5 h-5 animate-spin" /> Checking Traffic…</>
-              ) : (
-                <><Zap className="w-5 h-5" /> Check Traffic Now</>
-              )}
+              {isChecking
+                ? <><RefreshCw className="w-5 h-5 animate-spin" /> Checking Live Traffic…</>
+                : <><Zap className="w-5 h-5" /> Check Traffic Now</>}
             </button>
 
             {lastChecked && (
               <p className="text-xs text-gray-600 text-center">
                 Last checked: {lastChecked.toLocaleTimeString()}
-                {isSubscribed && (
-                  <span className="ml-2 text-cyan-600">• Auto-refreshing every 5 min</span>
-                )}
+                {isSubscribed && <span className="ml-2 text-cyan-700">• Auto-refreshing every 5 min</span>}
               </p>
             )}
           </div>
@@ -638,13 +632,16 @@ export default function Home() {
           {trafficData && (
             <div className="space-y-5 animate-fade-in">
 
-              {/* Destination header */}
-              <div className="flex items-center justify-between">
+              {/* Route Header */}
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <div className="text-xs text-gray-500 uppercase tracking-wider">Route to</div>
-                  <div className="font-semibold text-white text-lg font-display truncate max-w-xs">
-                    {destinationAddress || destination}
+                  <div className="font-semibold text-white text-lg font-display">
+                    {selectedDestination?.name || searchValue}
                   </div>
+                  {selectedDestination?.address && selectedDestination.address !== selectedDestination.name && (
+                    <div className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{selectedDestination.address}</div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   {trafficLevel && trafficBadge[trafficLevel]}
@@ -652,7 +649,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Recommendation Banner */}
+              {/* Recommendation */}
               <RecommendationBanner
                 level={trafficLevel}
                 delayMinutes={delayMin}
@@ -664,21 +661,25 @@ export default function Home() {
               <div className="grid grid-cols-2 gap-4">
                 <StatCard
                   icon={<Clock className="w-6 h-6" />}
-                  label="ETA (with traffic)"
+                  label="ETA with traffic"
                   value={formatDuration(trafficData.durationInTrafficSeconds)}
-                  sub="current conditions"
+                  sub="live conditions"
                   color="cyan"
                 />
                 <StatCard
                   icon={<Timer className="w-6 h-6" />}
-                  label="Normal Travel Time"
+                  label="Normal travel time"
                   value={formatDuration(trafficData.durationSeconds)}
                   sub="without traffic"
                   color={trafficLevel === 'light' ? 'green' : 'yellow'}
                 />
                 <StatCard
-                  icon={delayMin > 10 ? <TrendingUp className="w-6 h-6" /> : delayMin > 0 ? <Minus className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                  label="Traffic Delay"
+                  icon={
+                    delayMin > 10 ? <TrendingUp className="w-6 h-6" />
+                    : delayMin > 0 ? <Minus className="w-6 h-6" />
+                    : <TrendingDown className="w-6 h-6" />
+                  }
+                  label="Traffic delay"
                   value={delayMin > 0 ? `+${delayMin} min` : 'No delay'}
                   sub={trafficLevel === 'heavy' ? 'consider waiting' : 'acceptable'}
                   color={trafficLevel === 'heavy' ? 'red' : trafficLevel === 'moderate' ? 'yellow' : 'green'}
@@ -692,7 +693,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* Refresh button */}
+              {/* Refresh */}
               <button
                 id="refresh-traffic-btn"
                 onClick={() => checkTraffic(false)}
@@ -703,7 +704,7 @@ export default function Home() {
                 Refresh Traffic Data
               </button>
 
-              {/* Notifications */}
+              {/* Notification opt-in */}
               <NotificationPanel
                 level={trafficLevel}
                 onSubscribe={handleSubscribe}
@@ -721,24 +722,9 @@ export default function Home() {
               <h2 className="text-center text-lg font-semibold font-display text-gray-400">How it works</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  {
-                    step: '01',
-                    icon: '📍',
-                    title: 'Auto-detects location',
-                    desc: 'We use your browser\'s GPS to pinpoint your current position in real time.',
-                  },
-                  {
-                    step: '02',
-                    icon: '🗺️',
-                    title: 'Checks live traffic',
-                    desc: 'Google Maps Routes API fetches live traffic on your route and estimates actual travel time.',
-                  },
-                  {
-                    step: '03',
-                    icon: '🔔',
-                    title: 'Notifies at right time',
-                    desc: 'Enable notifications and we\'ll ping you the moment traffic improves to your preferred level.',
-                  },
+                  { step: '01', icon: '📍', title: 'Auto-detects your location', desc: "Your browser's GPS pinpoints your exact position in seconds." },
+                  { step: '02', icon: '🗺️', title: 'Checks live traffic', desc: 'TomTom real-time traffic data gives you the actual travel time right now.' },
+                  { step: '03', icon: '🔔', title: 'Notifies at right time', desc: "Enable notifications and we'll ping you the moment traffic improves." },
                 ].map((item) => (
                   <div key={item.step} className="glass-card p-6 text-center space-y-3">
                     <div className="text-xs font-bold text-cyan-500 uppercase tracking-widest">{item.step}</div>
@@ -756,7 +742,7 @@ export default function Home() {
         <footer className="border-t border-white/5 py-8 mt-10">
           <div className="max-w-4xl mx-auto px-4 text-center text-sm text-gray-600">
             <div className="font-semibold text-gray-500 mb-1">iManage Traffic Advisor</div>
-            <div>Powered by Google Maps Platform · Real-time traffic data</div>
+            <div>Real-time traffic data by TomTom · Free forever, no billing required</div>
           </div>
         </footer>
       </div>
