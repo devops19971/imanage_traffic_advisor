@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const encoded = encodeURIComponent(q.trim())
     let url =
       `https://api.tomtom.com/search/2/search/${encoded}.json` +
-      `?key=${apiKey}&limit=6&typeahead=true&language=en-GB`
+      `?key=${apiKey}&limit=6&typeahead=true&language=en-GB&countrySet=IN`
 
     // Bias results toward user's current location (50 km radius)
     if (lat && lng) {
