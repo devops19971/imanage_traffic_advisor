@@ -449,9 +449,9 @@ export default function Home() {
       durationInTrafficSeconds: trafficData.durationSeconds,
       trafficDelaySeconds: 0
     }
-    setTrafficData(mockData)
-    playNotificationSound()
     
+    // Play sound and trigger fake notification for testing purposes
+    playNotificationSound()
     const msg = `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`
     
     // Native OS Banner
@@ -460,8 +460,8 @@ export default function Home() {
     // In-App Banner
     toast.success(msg, { duration: 8000, position: 'top-right' })
     
-    setIsSubscribed(false)
-    if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
+    // (We intentionally DO NOT clear the polling interval or modify actual state,
+    // so the real background checker continues running uninterrupted!)
   }
 
   const trafficLevel = trafficData ? getTrafficLevel(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : null
