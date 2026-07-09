@@ -263,8 +263,10 @@ export default function Home() {
   const [locationFullAddress, setLocationFullAddress] = useState('')
   const [locationError, setLocationError] = useState(null)
   const [isLocating, setIsLocating] = useState(false)
-  // 'idle' = never asked | 'requesting' = browser prompt open | 'granted' | 'denied'
   const [locationPermission, setLocationPermission] = useState('idle')
+  // Manual location override (when GPS is inaccurate)
+  const [locationManualMode, setLocationManualMode] = useState(false)
+  const [manualLocationValue, setManualLocationValue] = useState('')
   const [trafficData, setTrafficData] = useState(null)
   const [isChecking, setIsChecking] = useState(false)
   const [lastChecked, setLastChecked] = useState(null)
@@ -486,26 +488,68 @@ export default function Home() {
               </div>
             )}
 
-            {/* ── Location: GRANTED — show address ── */}
+            {/* ── Location: GRANTED — show address + manual correction option ── */}
             {locationPermission === 'granted' && (
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Your Current Location</label>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 flex items-center gap-3 px-4 py-3.5 rounded-xl border border-green-500/30 bg-green-500/10 transition-all min-w-0">
-                    <Navigation className="w-4 h-4 flex-shrink-0 text-green-400" />
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate text-green-300">
-                        {isLocating ? 'Detecting precise location…' : (locationName || (currentLocation ? `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}` : 'Detected'))}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">Your Current Location</label>
+
+                {!locationManualMode ? (
+                  // ─ GPS detected address ─
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 flex items-center gap-3 px-4 py-3.5 rounded-xl border border-green-500/30 bg-green-500/10 transition-all min-w-0">
+                        <Navigation className="w-4 h-4 flex-shrink-0 text-green-400" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate text-green-300">
+                            {isLocating ? 'Detecting precise location…' : (locationName || (currentLocation ? `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}` : 'Detected'))}
+                          </div>
+                          {locationFullAddress && locationFullAddress !== locationName && (
+                            <div className="text-xs text-gray-500 truncate mt-0.5">{locationFullAddress}</div>
+                          )}
+                        </div>
                       </div>
-                      {locationFullAddress && locationFullAddress !== locationName && (
-                        <div className="text-xs text-gray-500 truncate mt-0.5">{locationFullAddress}</div>
-                      )}
+                      <button id="refresh-location-btn" onClick={getCurrentLocation} disabled={isLocating} title="Re-detect location" className="p-3.5 rounded-xl border border-white/10 bg-gray-800/60 hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-all disabled:opacity-50">
+                        <RefreshCw className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+                      </button>
                     </div>
+                    {/* Not your location? Fix it link */}
+                    <button
+                      onClick={() => { setLocationManualMode(true); setManualLocationValue('') }}
+                      className="mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      Not your exact location? Fix it manually
+                    </button>
                   </div>
-                  <button id="refresh-location-btn" onClick={getCurrentLocation} disabled={isLocating} title="Re-detect location" className="p-3.5 rounded-xl border border-white/10 bg-gray-800/60 hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-all disabled:opacity-50">
-                    <RefreshCw className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
+                ) : (
+                  // ─ Manual location search mode ─
+                  <div className="space-y-2 animate-fade-in">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>GPS placed you at <strong className="text-white">{locationName}</strong>. Search your exact address below to correct it.</span>
+                    </div>
+                    <PlacesAutocomplete
+                      currentLocation={currentLocation}
+                      value={manualLocationValue}
+                      onChange={(v) => setManualLocationValue(v)}
+                      onSelect={(s) => {
+                        if (s) {
+                          setCurrentLocation({ lat: s.lat, lng: s.lng })
+                          setLocationName(s.name || s.address)
+                          setLocationFullAddress(s.address || s.name)
+                          setLocationManualMode(false)
+                          toast.success('Location updated! ✅')
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => setLocationManualMode(false)}
+                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <X className="w-3 h-3" /> Cancel — keep detected location
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
