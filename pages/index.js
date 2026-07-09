@@ -160,34 +160,43 @@ function StatCard({ icon, label, value, sub, color = 'cyan' }) {
 
 // ─── Recommendation Banner ────────────────────────────────────────────────────
 
-function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDuration }) {
+function RecommendationBanner({ level, delayMinutes, trafficDuration, baseDuration, destination }) {
   if (!level) return null
-  if (level === 'light') return (
-    <div className="leave-now-glow rounded-2xl border border-green-500/40 bg-gradient-to-br from-green-500/15 to-emerald-600/10 p-6 flex items-center gap-5 animate-slide-up">
-      <div className="w-14 h-14 rounded-2xl bg-green-500/20 border border-green-500/30 flex items-center justify-center flex-shrink-0"><CheckCircle className="w-7 h-7 text-green-400" /></div>
-      <div className="flex-1">
-        <div className="text-green-400 font-bold text-xl font-display">✅ Leave Now!</div>
-        <div className="text-gray-300 text-sm mt-1">Traffic is light — ETA <span className="text-white font-semibold">{formatDuration(trafficDuration)}</span>.{delayMinutes > 0 ? ` Just ${delayMinutes} min extra.` : ' No delay at all!'}</div>
+  
+  // Acceptable traffic (light or moderate)
+  if (level === 'light' || level === 'moderate') {
+    const isLight = level === 'light'
+    const colorClass = isLight ? 'text-green-400' : 'text-yellow-400'
+    const bgClass = isLight ? 'border-green-500/40 from-green-500/15 to-emerald-600/10' : 'border-yellow-500/40 from-yellow-500/15 to-amber-600/10'
+    const iconBgClass = isLight ? 'bg-green-500/20 border-green-500/30' : 'bg-yellow-500/20 border-yellow-500/30'
+    
+    return (
+      <div className={`leave-now-glow rounded-2xl border bg-gradient-to-br ${bgClass} p-6 flex items-center gap-5 animate-slide-up`}>
+        <div className={`w-14 h-14 rounded-2xl border flex items-center justify-center flex-shrink-0 ${iconBgClass}`}>
+          {isLight ? <CheckCircle className={`w-7 h-7 ${colorClass}`} /> : <AlertTriangle className={`w-7 h-7 ${colorClass}`} />}
+        </div>
+        <div className="flex-1">
+          <div className={`${colorClass} font-bold text-xl font-display`}>{isLight ? '✅ Leave Now!' : '⏳ Moderate Traffic'}</div>
+          <div className="text-gray-300 text-sm mt-1">
+            You are ready to leave at this moment for <span className="text-white font-semibold">{destination}</span>. 
+            <br/><span className="opacity-80">ETA: {formatDuration(trafficDuration)} {delayMinutes > 0 ? `(${delayMinutes} min extra)` : ''}</span>
+          </div>
+        </div>
+        <div className="text-5xl">{isLight ? '🚀' : '🟡'}</div>
       </div>
-      <div className="text-5xl">🚀</div>
-    </div>
-  )
-  if (level === 'moderate') return (
-    <div className="rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-500/15 to-amber-600/10 p-6 flex items-center gap-5 animate-slide-up">
-      <div className="w-14 h-14 rounded-2xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-7 h-7 text-yellow-400" /></div>
-      <div className="flex-1">
-        <div className="text-yellow-400 font-bold text-xl font-display">⏳ Moderate Traffic</div>
-        <div className="text-gray-300 text-sm mt-1"><span className="text-white font-semibold">{delayMinutes} min delay</span>. You can leave if needed — waiting may help.</div>
-      </div>
-      <div className="text-5xl">🟡</div>
-    </div>
-  )
+    )
+  }
+
+  // Not acceptable traffic (heavy)
   return (
     <div className="rounded-2xl border border-red-500/40 bg-gradient-to-br from-red-500/15 to-orange-600/10 p-6 flex items-center gap-5 animate-slide-up">
       <div className="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center flex-shrink-0"><Timer className="w-7 h-7 text-red-400" /></div>
       <div className="flex-1">
         <div className="text-red-400 font-bold text-xl font-display">🔴 Wait — Heavy Traffic</div>
-        <div className="text-gray-300 text-sm mt-1"><span className="text-white font-semibold">{delayMinutes} min extra delay</span> vs normal. Enable notifications — we'll alert you when it clears.</div>
+        <div className="text-gray-300 text-sm mt-1">
+          Traffic is not acceptable for <span className="text-white font-semibold">{destination}</span> right now ({delayMinutes} min extra delay).
+          <br/><span className="text-cyan-300 font-medium">Please enable notifications below to be alerted when it clears.</span>
+        </div>
       </div>
       <div className="text-5xl">🚗</div>
     </div>
@@ -606,7 +615,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <RecommendationBanner level={trafficLevel} delayMinutes={delayMin} trafficDuration={trafficData.durationInTrafficSeconds} baseDuration={trafficData.durationSeconds} />
+              <RecommendationBanner level={trafficLevel} delayMinutes={delayMin} trafficDuration={trafficData.durationInTrafficSeconds} baseDuration={trafficData.durationSeconds} destination={selectedDestination?.name || searchValue} />
 
               <div className="grid grid-cols-2 gap-4">
                 <StatCard icon={<Clock className="w-6 h-6" />} label="ETA with traffic" value={formatDuration(trafficData.durationInTrafficSeconds)} sub="live conditions" color="cyan" />
@@ -618,8 +627,9 @@ export default function Home() {
               <button id="refresh-traffic-btn" onClick={() => checkTraffic(false)} disabled={isChecking} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-sm font-medium transition-all disabled:opacity-50">
                 <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />Refresh Traffic Data
               </button>
-
-              <NotificationPanel level={trafficLevel} onSubscribe={handleSubscribe} isSubscribed={isSubscribed} onUnsubscribe={handleUnsubscribe} notifThreshold={notifThreshold} setNotifThreshold={setNotifThreshold} />
+              { (trafficLevel === 'heavy' || isSubscribed) && (
+                <NotificationPanel level={trafficLevel} onSubscribe={handleSubscribe} isSubscribed={isSubscribed} onUnsubscribe={handleUnsubscribe} notifThreshold={notifThreshold} setNotifThreshold={setNotifThreshold} />
+              )}
             </div>
           )}
 
