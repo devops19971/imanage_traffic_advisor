@@ -490,7 +490,7 @@ export default function Home() {
 
             {/* ── Location: GRANTED — show address + manual correction option ── */}
             {locationPermission === 'granted' && (
-              <div className="space-y-2">
+              <div className="space-y-2 relative z-50">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500">Your Current Location</label>
 
                 {!locationManualMode ? (
@@ -554,7 +554,7 @@ export default function Home() {
             )}
 
             {/* ── Destination Autocomplete ── */}
-            <div>
+            <div className="relative z-40">
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Destination</label>
               <PlacesAutocomplete
                 currentLocation={currentLocation}
