@@ -20,9 +20,9 @@ export default async function handler(req, res) {
       `https://api.tomtom.com/search/2/search/${encoded}.json` +
       `?key=${apiKey}&limit=6&typeahead=true&language=en-GB&countrySet=IN`
 
-    // Bias results toward user's current location (50 km radius)
+    // Bias results toward user's current location without strictly restricting them
     if (lat && lng) {
-      url += `&lat=${lat}&lon=${lng}&radius=50000`
+      url += `&lat=${lat}&lon=${lng}`
     }
 
     const resp = await fetch(url)
