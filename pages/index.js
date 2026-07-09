@@ -31,6 +31,18 @@ function playNotificationSound() {
   }
 }
 
+function showNativeNotification(title, options) {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then((registration) => {
+      registration.showNotification(title, options)
+    }).catch(() => {
+      new Notification(title, options)
+    })
+  } else {
+    new Notification(title, options)
+  }
+}
+
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return '—'
   const h = Math.floor(seconds / 3600)
@@ -393,8 +405,9 @@ export default function Home() {
         const thresholdMet = notifThreshold === 'light' ? level === 'light' : level !== 'heavy'
         if (thresholdMet) {
           playNotificationSound()
-          new Notification('🚦 iManage Traffic Advisor', { 
-            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`
+          showNativeNotification('🚦 iManage Traffic Advisor', { 
+            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`,
+            requireInteraction: true
           })
           toast.success('Traffic improved — notification sent!')
           setIsSubscribed(false)
@@ -438,6 +451,13 @@ export default function Home() {
 
   useEffect(() => () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current) }, [])
 
+  // Register Service Worker on mount to enable sticky native notifications
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(console.error)
+    }
+  }, [])
+
   const handleSimulateDrop = () => {
     if (!trafficData) return
     const mockData = {
@@ -447,8 +467,9 @@ export default function Home() {
     }
     setTrafficData(mockData)
     playNotificationSound()
-    new Notification('🧪 TEST ALERT: Traffic is Light!', { 
-      body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`
+    showNativeNotification('🧪 TEST ALERT: Traffic is Light!', { 
+      body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`,
+      requireInteraction: true
     })
     toast.success('Simulation triggered!')
     setIsSubscribed(false)
