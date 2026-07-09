@@ -9,6 +9,28 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext
+    if (!AudioContext) return
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gainNode = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime) // D5
+    osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.1) // A5
+    gainNode.gain.setValueAtTime(0, ctx.currentTime)
+    gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.02)
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1)
+    osc.connect(gainNode)
+    gainNode.connect(ctx.destination)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 1)
+  } catch (e) {
+    console.error('Audio play failed', e)
+  }
+}
+
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return '—'
   const h = Math.floor(seconds / 3600)
@@ -370,7 +392,12 @@ export default function Home() {
         const level = getTrafficLevel(data.durationSeconds, data.durationInTrafficSeconds)
         const thresholdMet = notifThreshold === 'light' ? level === 'light' : level !== 'heavy'
         if (thresholdMet) {
-          new Notification('🚦 iManage Traffic Advisor', { body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`, icon: '/favicon.ico' })
+          playNotificationSound()
+          new Notification('🚦 iManage Traffic Advisor', { 
+            body: `Traffic is ${level}! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(data.durationInTrafficSeconds)}`, 
+            icon: '/favicon.ico',
+            requireInteraction: true
+          })
           toast.success('Traffic improved — notification sent!')
           setIsSubscribed(false)
           if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null }
@@ -421,9 +448,11 @@ export default function Home() {
       trafficDelaySeconds: 0
     }
     setTrafficData(mockData)
+    playNotificationSound()
     new Notification('🧪 TEST ALERT: Traffic is Light!', { 
       body: `Traffic is light! Leave now for ${selectedDestination.name}. ETA: ${formatDuration(mockData.durationInTrafficSeconds)}`, 
-      icon: '/favicon.ico' 
+      icon: '/favicon.ico',
+      requireInteraction: true
     })
     toast.success('Simulation triggered!')
     setIsSubscribed(false)
