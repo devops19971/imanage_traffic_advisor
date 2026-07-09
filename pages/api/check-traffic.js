@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       `&traffic=true` +
       `&travelMode=car` +
       `&routeType=fastest` +
-      `&computeBestOrder=false`
+      `&computeTravelTimeFor=all`
 
     const resp = await fetch(routeUrl)
 
@@ -55,10 +55,10 @@ export default async function handler(req, res) {
     //   liveTrafficIncidentsTravelTimeInSeconds → incidents-only travel time
 
     return res.status(200).json({
-      durationSeconds: summary.noTrafficTravelTimeInSeconds,
+      durationSeconds: summary.noTrafficTravelTimeInSeconds || (summary.travelTimeInSeconds - (summary.trafficDelayInSeconds || 0)),
       durationInTrafficSeconds: summary.travelTimeInSeconds,
       trafficDelaySeconds: summary.trafficDelayInSeconds || 0,
-      historicDurationSeconds: summary.historicTrafficTravelTimeInSeconds,
+      historicDurationSeconds: summary.historicTrafficTravelTimeInSeconds || summary.travelTimeInSeconds,
       distanceMeters: summary.lengthInMeters,
     })
   } catch (err) {
