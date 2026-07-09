@@ -35,20 +35,22 @@ export default async function handler(req, res) {
     // e.g. "Ramkrishna Nagar, Patna" or "Mahendra Apartment, Ramkrishna Nagar, Patna"
     const parts = []
 
-    // Building name (apartment/complex name) — most specific
+    // 1. Building name (most specific)
     if (addr.buildingName) parts.push(addr.buildingName)
 
-    // Street / Road name
-    if (addr.streetName) parts.push(addr.streetName)
-
-    // Neighbourhood / Locality (e.g. Ramkrishna Nagar)
-    if (addr.neighbourhood && !parts.includes(addr.neighbourhood)) {
+    // 2. Neighbourhood / Sublocality (e.g. Ramkrishan Nagar)
+    if (addr.neighbourhood) {
       parts.push(addr.neighbourhood)
-    } else if (addr.localName && !parts.includes(addr.localName)) {
+    } else if (addr.localName) {
       parts.push(addr.localName)
     }
 
-    // Municipality (Patna)
+    // 3. Street Name (Only use if we don't have a building or neighbourhood, to avoid clutter)
+    if (addr.streetName && parts.length === 0) {
+      parts.push(addr.streetName)
+    }
+
+    // 4. Municipality (e.g. Patna)
     if (addr.municipality && !parts.includes(addr.municipality)) {
       parts.push(addr.municipality)
     }
