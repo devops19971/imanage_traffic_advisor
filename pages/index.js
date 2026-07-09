@@ -397,6 +397,15 @@ export default function Home() {
     toast('Notifications disabled.', { icon: '🔕' })
   }
 
+  // Auto-cancel polling if the user changes their route (origin or destination)
+  useEffect(() => {
+    if (isSubscribed) {
+      setIsSubscribed(false)
+      if (pollingInterval) { clearInterval(pollingInterval); setPollingInterval(null) }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation, selectedDestination])
+
   useEffect(() => () => { if (pollingInterval) clearInterval(pollingInterval) }, [pollingInterval])
 
   const trafficLevel = trafficData ? getTrafficLevel(trafficData.durationSeconds, trafficData.durationInTrafficSeconds) : null
